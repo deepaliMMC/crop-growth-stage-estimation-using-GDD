@@ -1,85 +1,115 @@
-# pip install meteostat
-from datetime import datetime
-import pandas as pd
-from geopy import Nominatim   #not required if lat long is picked from the dashboard
-import meteostat
-from meteostat import Point, Daily
+import requests
+import numpy as np
 import json
+import os
+import pandas as pd
 
-# Open the text file
-with open('C:\\Users\\Admin\\PycharmProjects\\Growing Degree Days 13 crops\\growth stage for 13 crops_json.txt', 'r') as f:
-    # Read the contents of the file
-    data = f.read()
+# TEMPERATURE API CALLS
+API_LINK = 'https://api.mapmycrop.store/weather/past-data'
+farm_id = 'e8826bbeac7448b4abbb6de9c5ab300c'
+api_key = 'df85ac22fb354478b9c69ba005260fd7'
 
-# Replace single quotes with double quotes
-data = data.replace("'", "\"")
+api_url = f"{API_LINK}?api_key={api_key}&farm_id={farm_id}"
+response = requests.get(api_url)
+data = response.json()
 
-# Attempt to load data into a JSON object
-try:
-    json_data = json.loads(data)
-    # print(json_data)
-except json.JSONDecodeError as e:
-    print("Error decoding JSON:", e)
+# Load crop dictionaries and data from CSV files
+crop_dict_stages = pd.read_csv('crop_dict_stages.csv').set_index('crop_name').to_dict()['base_temperature']
+crop_dict_GDD_only = pd.read_csv('crop_dict_GDD_only.csv').set_index('crop_name').to_dict()['base_temperature']
+crop_data = pd.read_csv('crop_data.csv')
 
+# Process the crop data as in your original code
+crop = data['crop_name'].lower().strip()  # Normalize the crop name
 
-crop = str(input('insert crop name:'))  # input by user
-start = input('enter date: ')  # input by user
-address = input('insert crop location:')  #Please Remove this line if lat long is taken from the dashboard
+# Initialize GDD and Cumulative GDD lists
+data['GDD'] = []
+data['Cumulative GDD'] = []
 
-# from geopy import Nominatim
-geolocator = Nominatim(user_agent="Your_Name")  #Please Remove this line if lat long is taken from the dashboard
-location = geolocator.geocode(address)    #Please Remove this line if lat long is taken from the dashboard
-loc_variable = Point(location.latitude, location.longitude)   #Please Remove this line if lat long is taken from the dashboard
+# Check which dictionary contains the crop and set the base temperature (j)
+if crop in crop_dict_stages:
+    j = crop_dict_stages[crop]
+    stages_present = True
+else:
+    j = crop_dict_GDD_only.get(crop)
+    stages_present = False
 
-# loc_variable = Point(latitude, longitude) #input latitude and longitude value here from teh dashboard
+# Ensure j is defined and valid
+if j is None:
+    raise ValueError(f"Crop name '{crop}' not found in any database")
 
-end = datetime.today()
-data = Daily(loc_variable, start, end)
-data = data.fetch()
-n = len(data)
+# Calculate GDD
+base_temp = j
 
-# List of base temperature for the crops
-crop_dict = {
-    'barley': 0,
-    'wheat (hard red)': 0,
-    'oat': 4.5,  #4.444
-    'canary seed': 7,
-    'flax': 5,
-    'canola (B. napus)': 5,
-    'canola (B. rapa)': 5,
-    'mustard (B. juncea)': 5,
-    'mustard (S. alba)': 5,
-    'chick pea desi': 5,
-    'lentil': 5,
-    'pea': 5,     #green pea
-    'sunflower': 6.7,
+for max_temp, min_temp in zip(data['daily_temperature']['apparent_temperature_max'],
+                              data['daily_temperature']['apparent_temperature_min']):
+    if max_temp is not None and min_temp is not None:
+        avg_temp = (max_temp + min_temp) / 2
+        gdd = max(0, avg_temp - base_temp)  # Ensure GDD is not negative
+    else:
+        gdd = None  # Handle missing temperature data
+    data['GDD'].append(gdd)
+
+# Calculate Cumulative GDD using numpy's cumsum, ignoring None values
+cumulative_gdd = np.nancumsum([gdd if gdd is not None else 0 for gdd in data['GDD']])
+data['Cumulative GDD'] = cumulative_gdd.tolist()
+
+# Output dictionary structure based on the crop type
+if stages_present:
+    data['Growth_stage'] = []  # Initialize Growth Stage
+    data['info'] = []          # Initialize info
+
+    for cum_gdd in data['Cumulative GDD']:
+        # Find the growth stage based on Cumulative GDD
+        stage_found = False
+        for _, stage in crop_data.iterrows():
+            if stage['crop_name'].lower() == crop and stage['min_GDD_C'] <= cum_gdd <= stage['max_GDD_C']:
+                data['Growth_stage'].append(stage['growth_stage'])
+                data['info'].append(stage.get('info', ''))  # Append the info for the growth stage
+                stage_found = True
+                break
+        if not stage_found:
+            data['Growth_stage'].append('Unknown stage')
+            data['info'].append('')  # No info if no stage matches
+
+else:
+    # Remove Growth_stage and info if the crop only uses GDD data
+    if 'Growth_stage' in data:
+        del data['Growth_stage']
+    if 'info' in data:
+        del data['info']
+
+# Create the final output dictionary
+final_output = {
+    "Date": data['daily_temperature']['time'],  # Assuming time is a list of dates
+    "Cumulative GDD": data['Cumulative GDD'],
 }
+# Include 'Growth Stage' and 'info' if stages are present
+if stages_present:
+    final_output["Growth Stage"] = data['Growth_stage']
+    final_output["Info"] = data['info']
 
-output_data = {}  # Dictionary to store output data
+# Define the JSON file path
+json_file = "output.json"
 
-if crop in crop_dict:
-    tbase = crop_dict[crop]
-    print(f"The value of j for {crop} is {tbase}")
-    output_data['crop'] = crop
+# Try to load existing data or start with an empty list if the file is empty or invalid
+if os.path.exists(json_file):
+    try:
+        with open(json_file, "r") as file:
+            existing_data = json.load(file)
+            if not isinstance(existing_data, list):  # Ensure it's a list
+                existing_data = []
+    except json.JSONDecodeError:
+        print("Warning: data.json is empty or corrupted. Initializing with an empty list.")
+        existing_data = []
 else:
-    print('Enter valid sowing date')
+    existing_data = []
 
-GDU = data.tavg.sum() - n * tbase  # Growing Degree Units
+# Append the new final_output to the existing data
+existing_data.append(final_output)
 
-output_data['GDU'] = GDU
+# Write the updated data back to 'data.json'
+with open(json_file, "w") as file:
+    json.dump(existing_data, file, indent=4)
 
-for entry in json_data:
-    if entry['crop_name'] == crop and entry['min_GDD_C'] < GDU < entry['max_GDD_C']:
-        output_data['growth_stage'] = entry['growth_stage']
-        output_data['BBCH'] = entry['BBCH']
-        break
-else:
-    output_data['growth_stage'] = 'Not found'
-    output_data['BBCH'] = 'Not found'
-
-# Write output data to a JSON file
-output_file = 'output.json'
-with open(output_file, 'w') as f:
-    json.dump(output_data, f, indent=4)
-
-print("Output data written to:", output_file)
+# Print the final output dictionary for verification
+print(final_output)
