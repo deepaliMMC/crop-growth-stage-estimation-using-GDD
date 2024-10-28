@@ -1,0 +1,14 @@
+crop_name,base_temperature
+barley,0
+wheat (hard red),0
+bermudagrass,2
+canary seed,7
+flax,5
+canola (B. napus),5
+canola (B. rapa),5
+mustard (B. juncea),5
+mustard (S. alba),5
+chick pea desi,5
+lentil,5
+pea,5
+sunflower,6.7

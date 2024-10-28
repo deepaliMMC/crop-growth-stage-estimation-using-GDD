@@ -1,0 +1,10 @@
+crop_name,growth_stage,info,min_GDD_C,max_GDD_C
+barley,Emergence,Leaf tip just emerging from above-ground coleoptile BBCH- 1.0,108.6,145.5
+barley,Leaf development,Two leaves unfolded. BBCH- 1.2,145.6,246.0
+barley,Tillering,"First tiller visible, BBCH- 2.1",246.1,424.5
+barley,Stem elongation,First node detectable. BBCH- 3.1,424.6,646.5
+barley,Anthesis,Flowering commences; first anthers of cereals are visible. BBCH- 6.1,646.6,931.5
+barley,Seed fill,Seed fill begins. Caryopsis of cereals watery ripe (first grains have reached half of their final size). BBCH- 7.1,931.6,1169.0
+barley,Dough stage,"Soft dough stage, grain contents soft but dry, fingernail impression does not hold. BBCH- 8.5",1169.1,1353.5
+barley,Maturity complete,Grain is fully mature and drydown begins. Ready for harvest when dry. BBCH: 8.9,1353.6,1522.5
+barley,crossed maturity,"If crop is not harvested then it has crossed maturity period, BBCH-NIL",1522.6,15000.0
