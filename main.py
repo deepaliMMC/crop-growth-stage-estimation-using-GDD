@@ -2,7 +2,7 @@ import requests
 import numpy as np
 import json
 import os
-import pandas as pd
+from ultralytics import fastapi
 
 # TEMPERATURE API CALLS
 API_LINK = 'https://api.mapmycrop.store/weather/past-data'
@@ -13,10 +13,13 @@ api_url = f"{API_LINK}?api_key={api_key}&farm_id={farm_id}"
 response = requests.get(api_url)
 data = response.json()
 
-# Load crop dictionaries and data from CSV files
-crop_dict_stages = pd.read_csv('crop_dict_stages.csv').set_index('crop_name').to_dict()['base_temperature']
-crop_dict_GDD_only = pd.read_csv('crop_dict_GDD_only.csv').set_index('crop_name').to_dict()['base_temperature']
-crop_data = pd.read_csv('crop_data.csv')
+# Load crop dictionaries and data from the external file
+file_path = "ref_data.txt"
+with open(file_path, "r") as file:
+    file_content = file.read()
+
+# Execute the content to load dictionaries and lists
+exec(file_content)
 
 # Process the crop data as in your original code
 crop = data['crop_name'].lower().strip()  # Normalize the crop name
@@ -33,7 +36,7 @@ else:
     j = crop_dict_GDD_only.get(crop)
     stages_present = False
 
-# Ensure j is defined and valid
+# To ensure j is defined and valid
 if j is None:
     raise ValueError(f"Crop name '{crop}' not found in any database")
 
@@ -61,8 +64,8 @@ if stages_present:
     for cum_gdd in data['Cumulative GDD']:
         # Find the growth stage based on Cumulative GDD
         stage_found = False
-        for _, stage in crop_data.iterrows():
-            if stage['crop_name'].lower() == crop and stage['min_GDD_C'] <= cum_gdd <= stage['max_GDD_C']:
+        for stage in crop_data:
+            if stage['crop_name'] == crop and stage['min_GDD_C'] <= cum_gdd <= stage['max_GDD_C']:
                 data['Growth_stage'].append(stage['growth_stage'])
                 data['info'].append(stage.get('info', ''))  # Append the info for the growth stage
                 stage_found = True
